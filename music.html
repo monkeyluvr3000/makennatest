@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="icon" type="image/png" href="images/mavicon.png">
+</head>
+<body>
+    <div class="container">
+        <!-- Song list sidebar (left) -->
+        <div class="sidebar">
+            <h2>songs type shi</h2>
+            <div class="song-list" id="songList">
+                <!-- Songs will be added here dynamically -->
+            </div>
+        </div>
+        
+        <!-- Main display area -->
+        <div class="main-content">
+            <div class="song-display" id="songDisplay">
+                <div class="song-info">
+                    <img src="placeholder.jpg" id="songImage" alt="Song Cover">
+                    <h2 id="songTitle">Song Title</h2>
+                    <h3 id="songArtist">Artist Name</h3>
+                    <p id="snippetTimestamp">Snippet: 0:00 - 0:30</p>
+                </div>
+            </div>
+            
+            <!-- Playback controls -->
+            <div class="controls">
+                <button id="prevBtn" class="control-btn"><i class="fas fa-step-backward"></i></button>
+                <button id="playPauseBtn" class="control-btn"><i class="fas fa-play"></i></button>
+                <button id="nextBtn" class="control-btn"><i class="fas fa-step-forward"></i></button>
+                <button id="loopBtn" class="toggle-btn"><i class="fas fa-redo"></i></button>
+                <button id="shuffleBtn" class="toggle-btn"><i class="fas fa-random"></i></button>
+                
+                <!-- Removed the crossfade control -->
+            </div>
+        </div>
+        
+        <!-- Background options sidebar (right) -->
+        <div class="bg-sidebar">
+            <h2>backgrounds type shi</h2>
+            <div class="bg-list" id="bgList">
+                <!-- Background options will be added dynamically -->
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
