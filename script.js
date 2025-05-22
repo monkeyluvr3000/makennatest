@@ -127,10 +127,9 @@ document.addEventListener('DOMContentLoaded', () => {
             name: "gliderport",
             imageUrl: "images/gliderport.jpeg"
         }
-
     ];
 
-    // App state - removed crossfade properties
+    // App state
     const state = {
         songs: songs,
         backgrounds: backgrounds,
@@ -142,17 +141,18 @@ document.addEventListener('DOMContentLoaded', () => {
         audioContext: null,
         currentSource: null,
         currentGainNode: null,
-        activeSources: [], // Keep track of all active audio sources
-        activeGainNodes: [], // Keep track of all active gain nodes
-        buffers: {}, // Cache for loaded audio buffers
+        activeSources: [],
+        activeGainNodes: [],
+        buffers: {},
         currentBuffer: null,
-        startTime: 0, // When the current source started playing
-        playbackPosition: 0 // Current playback position in seconds
+        startTime: 0,
+        playbackPosition: 0,
+        audioInitialized: false // Track if audio has been initialized
     };
 
     // DOM elements
     const songList = document.getElementById('songList');
-    const bgList = document.getElementById('bgList'); // New background list
+    const bgList = document.getElementById('bgList');
     const songTitle = document.getElementById('songTitle');
     const songArtist = document.getElementById('songArtist');
     const songImage = document.getElementById('songImage');
@@ -162,24 +162,58 @@ document.addEventListener('DOMContentLoaded', () => {
     const nextBtn = document.getElementById('nextBtn');
     const loopBtn = document.getElementById('loopBtn');
     const shuffleBtn = document.getElementById('shuffleBtn');
-    // Removed crossfade slider references
 
-    // Initialize the Web Audio API
+    // Initialize the Web Audio API - ONLY after user interaction
     function initAudioContext() {
-        try {
-            // Create an audio context
-            const AudioContext = window.AudioContext || window.webkitAudioContext;
-            state.audioContext = new AudioContext();
-        } catch (e) {
-            console.error('Web Audio API is not supported in this browser', e);
+        if (!state.audioContext) {
+            try {
+                console.log("Initializing AudioContext");
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                state.audioContext = new AudioContext();
+                state.audioInitialized = true;
+                console.log("AudioContext state:", state.audioContext.state);
+            } catch (e) {
+                console.error('Web Audio API is not supported in this browser', e);
+            }
+        }
+        return state.audioContext;
+    }
+
+    // Ensure audio context is resumed - returns a promise
+    async function ensureAudioContextResumed() {
+        if (!state.audioContext) {
+            initAudioContext();
+        }
+        
+        if (state.audioContext && state.audioContext.state === 'suspended') {
+            try {
+                console.log("Resuming suspended AudioContext...");
+                await state.audioContext.resume();
+                console.log("AudioContext resumed:", state.audioContext.state);
+            } catch (e) {
+                console.error("Failed to resume AudioContext:", e);
+            }
+        }
+        return state.audioContext;
+    }
+
+    // Handler for user interaction events
+    async function handleUserInteraction(event) {
+        console.log(`User interaction: ${event.type}`);
+        if (!state.audioInitialized) {
+            initAudioContext();
+            
+            // Preload the first song after user interaction
+            if (state.songs.length > 0) {
+                preloadAudio(state.songs[state.currentSongIndex].audioUrl);
+            }
+        } else {
+            await ensureAudioContextResumed();
         }
     }
 
     // Initialize the player
     function initPlayer() {
-        // Initialize audio context
-        initAudioContext();
-        
         // Create the song list
         if (songList) {
             updateSongList();
@@ -195,10 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         // Load the first song if we're on the music page
         if (state.songs.length > 0 && songTitle) {
-            // Preload first song
-            preloadAudio(state.songs[0].audioUrl, () => {
-                updateDisplay(0);
-            });
+            updateDisplay(0);
+            // NOTE: We now wait for user interaction before initializing audio
         }
     }
 
@@ -206,25 +238,36 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupEventListeners() {
         // Only set up these listeners if we're on the music page
         if (playPauseBtn) {
-            // Play/Pause button
-            playPauseBtn.addEventListener('click', togglePlayPause);
+            // Play/Pause button with user interaction handling
+            playPauseBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                await handleUserInteraction(e);
+                togglePlayPause();
+            });
 
-            // Previous and Next buttons
-            prevBtn.addEventListener('click', playPrevious);
-            nextBtn.addEventListener('click', playNext);
+            // Previous and Next buttons with user interaction handling
+            prevBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                await handleUserInteraction(e);
+                playPrevious();
+            });
+            
+            nextBtn.addEventListener('click', async function(e) {
+                e.preventDefault();
+                await handleUserInteraction(e);
+                playNext();
+            });
 
             // Loop and Shuffle buttons
             loopBtn.addEventListener('click', toggleLoop);
             shuffleBtn.addEventListener('click', toggleShuffle);
             
-            // Removed crossfade slider event listeners
+            // Add touch event listeners for mobile devices
+            document.addEventListener('touchstart', handleUserInteraction);
+            document.addEventListener('touchend', handleUserInteraction);
             
-            // Resume audio context on user interaction (needed for some browsers)
-            document.addEventListener('click', () => {
-                if (state.audioContext && state.audioContext.state === 'suspended') {
-                    state.audioContext.resume();
-                }
-            });
+            // Standard click listener for desktop
+            document.addEventListener('click', handleUserInteraction);
         }
     }
     
@@ -257,34 +300,47 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Removed crossfade-related functions and kept essential audio playback functions
     // Preload audio file and store in buffer cache
     function preloadAudio(url, callback) {
-        // Check if we already have this audio in cache
-        if (state.buffers[url]) {
-            if (callback) callback();
+        // Check if audio context is available
+        if (!state.audioContext) {
+            console.log("Cannot preload audio - AudioContext not initialized");
+            if (callback) callback(false);
             return;
         }
+        
+        // Check if we already have this audio in cache
+        if (state.buffers[url]) {
+            console.log("Audio already cached:", url);
+            if (callback) callback(true);
+            return;
+        }
+        
+        console.log("Preloading audio:", url);
         
         const request = new XMLHttpRequest();
         request.open('GET', url, true);
         request.responseType = 'arraybuffer';
         
         request.onload = function() {
+            console.log("Audio file loaded, decoding:", url);
             state.audioContext.decodeAudioData(
                 request.response,
                 function(buffer) {
+                    console.log("Audio decoded successfully:", url);
                     state.buffers[url] = buffer;
-                    if (callback) callback();
+                    if (callback) callback(true);
                 },
                 function(error) {
-                    console.error('Error decoding audio data', error);
+                    console.error('Error decoding audio data:', error);
+                    if (callback) callback(false);
                 }
             );
         };
         
-        request.onerror = function() {
-            console.error('Error loading audio file');
+        request.onerror = function(e) {
+            console.error('Error loading audio file:', e);
+            if (callback) callback(false);
         };
         
         request.send();
@@ -296,13 +352,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const gainNode = state.audioContext.createGain();
         
         source.buffer = buffer;
-        source.loop = false; // We'll handle looping manually
+        source.loop = false;
         
-        // Connect source to gain node then to destination
         source.connect(gainNode);
         gainNode.connect(state.audioContext.destination);
         
-        // Keep track of active sources and gain nodes for cleanup
         state.activeSources.push(source);
         state.activeGainNodes.push(gainNode);
         
@@ -311,7 +365,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Stop and clean up all active audio sources
     function stopAllAudio() {
-        // Stop all active sources
         state.activeSources.forEach(source => {
             try {
                 source.stop();
@@ -320,59 +373,57 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        // Clear and reset tracking arrays
         state.activeSources = [];
         state.activeGainNodes = [];
         
-        // Clear current references
         state.currentSource = null;
         state.currentGainNode = null;
     }
 
-    // Play audio buffer with Web Audio API
-    function playAudioBuffer(buffer) {
-        // Resume audio context if suspended
-        if (state.audioContext.state === 'suspended') {
-            state.audioContext.resume();
-        }
-        
-        // Stop any currently playing audio
-        stopAllAudio();
-        
-        // Create a new source and gain node
-        const { source, gainNode } = createSource(buffer);
-        
-        // Store references
-        state.currentSource = source;
-        state.currentGainNode = gainNode;
-        state.currentBuffer = buffer;
-        
-        // Set full volume
-        gainNode.gain.setValueAtTime(1, state.audioContext.currentTime);
-        
-        // Start playback
-        state.startTime = state.audioContext.currentTime;
-        state.playbackPosition = 0;
-        source.start(0);
-        
-        state.isPlaying = true;
-        playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
-        
-        // Set up ended event handler for when song naturally ends
-        source.onended = function() {
-            // Only handle ending if this is still the current source
-            if (source === state.currentSource && state.isPlaying) {
-                if (state.isLooping) {
-                    // Just restart the same song if loop is on
-                    playAudioBuffer(buffer);
-                } else {
-                    // Move to the next song
-                    playNext();
+    // Play audio buffer with Web Audio API - now async to ensure AudioContext is ready
+    async function playAudioBuffer(buffer) {
+        try {
+            // Ensure audio context is resumed before playing
+            await ensureAudioContextResumed();
+            
+            // Stop any currently playing audio
+            stopAllAudio();
+            
+            // Create a new source and gain node
+            const { source, gainNode } = createSource(buffer);
+            
+            // Store references
+            state.currentSource = source;
+            state.currentGainNode = gainNode;
+            state.currentBuffer = buffer;
+            
+            // Set volume to full for mobile
+            gainNode.gain.setValueAtTime(1, state.audioContext.currentTime);
+            
+            // Start playback
+            state.startTime = state.audioContext.currentTime;
+            state.playbackPosition = 0;
+            source.start(0);
+            console.log("Audio playback started");
+            
+            state.isPlaying = true;
+            playPauseBtn.innerHTML = '<i class="fas fa-pause"></i>';
+            
+            // Set up ended event handler for when song naturally ends
+            source.onended = function() {
+                if (source === state.currentSource && state.isPlaying) {
+                    if (state.isLooping) {
+                        playAudioBuffer(buffer);
+                    } else {
+                        playNext();
+                    }
                 }
-            }
-        };
-        
-        return { source, gainNode };
+            };
+            
+            return { source, gainNode };
+        } catch (error) {
+            console.error("Error playing audio:", error);
+        }
     }
 
     // Pause current playback
@@ -384,27 +435,28 @@ document.addEventListener('DOMContentLoaded', () => {
         state.isPlaying = false;
         playPauseBtn.innerHTML = '<i class="fas fa-play"></i>';
         
-        // Store position for resume
         if (state.currentBuffer) {
             state.playbackPosition = (state.audioContext.currentTime - state.startTime) % state.currentBuffer.duration;
         }
     }
 
-    // Toggle play/pause
-    function togglePlayPause() {
+    // Toggle play/pause - updated to handle async operations
+    async function togglePlayPause() {
         if (state.songs.length === 0) return;
         
         if (state.isPlaying) {
             pauseAudio();
         } else {
-            // Resume playing current buffer if available
             if (state.currentBuffer) {
-                playAudioBuffer(state.currentBuffer);
+                await playAudioBuffer(state.currentBuffer);
             } else {
-                // Load current song if no buffer is available
                 const url = state.songs[state.currentSongIndex].audioUrl;
-                preloadAudio(url, function() {
-                    playAudioBuffer(state.buffers[url]);
+                preloadAudio(url, async function(success) {
+                    if (success) {
+                        await playAudioBuffer(state.buffers[url]);
+                    } else {
+                        console.error("Failed to load audio:", url);
+                    }
                 });
             }
         }
@@ -466,14 +518,16 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDisplay(newIndex);
         
         // Preload the new song if needed
-        preloadAudio(newUrl, function() {
-            // If we're playing, switch to the new song
-            if (state.isPlaying) {
-                playAudioBuffer(state.buffers[newUrl]);
-            } else {
-                // Just prepare the buffer for later playback
-                state.currentBuffer = state.buffers[newUrl];
-                state.currentSongIndex = newIndex;
+        preloadAudio(newUrl, async function(success) {
+            if (success) {
+                // If we're playing, switch to the new song
+                if (state.isPlaying) {
+                    await playAudioBuffer(state.buffers[newUrl]);
+                } else {
+                    // Just prepare the buffer for later playback
+                    state.currentBuffer = state.buffers[newUrl];
+                    state.currentSongIndex = newIndex;
+                }
             }
         });
     }
@@ -523,7 +577,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 songItem.classList.add('active');
             }
             songItem.textContent = song.title;
-            songItem.addEventListener('click', () => {
+            songItem.addEventListener('click', async (e) => {
+                await handleUserInteraction(e);
                 changeSong(index);
             });
             
